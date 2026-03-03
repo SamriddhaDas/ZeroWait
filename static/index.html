@@ -206,37 +206,171 @@
     .full-width{grid-column:1;}
   }
 
-  /* ── MOBILE <= 600px ── */
+  /* ── MOBILE-ONLY ELEMENTS: hidden by default on desktop ── */
+  .mob-overlay,.mob-sidebar,.mob-bottom-nav,.mob-bottom-spacer{display:none;}
+  .mobile-header{display:none;}
+
+  /* ══════════════════════════════════════════
+     PHONE LAYOUT (<= 600px) — Sidebar Navigation
+  ══════════════════════════════════════════ */
   @media(max-width:600px){
-    header{padding:10px 14px;}
+
+    /* ── Unhide mobile-only elements ── */
+    .mob-bottom-nav{display:flex;}
+    .mob-bottom-spacer{display:block;}
+
+    /* ── Lock body when sidebar open ── */
+    body.sidebar-open{overflow:hidden;}
+
+    /* ── Mobile header ── */
+    header{padding:0;height:54px;position:fixed;top:0;left:0;right:0;z-index:200;}
+    .mobile-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 16px;height:54px;background:var(--dark2);
+      border-bottom:1px solid var(--border);
+    }
     .logo-svg{height:28px;}
-    .api-status span{display:none;}
-    .hero{padding:16px 14px;flex-wrap:wrap;}
-    .hero-stats{border-radius:10px;width:100%;}
-    .hero-stat{padding:10px;flex:1;}
-    .hero-stat .lbl{font-size:8px;}
-    .main{padding:12px;gap:12px;}
-    .card{padding:16px;border-radius:12px;}
-    .card-title{font-size:11px;margin-bottom:12px;}
-    .form-grid{grid-template-columns:1fr;gap:10px;}
-    .field select,.field input[type=number]{font-size:16px;padding:12px;}
-    .btn-predict{font-size:14px;padding:15px;}
+    .header-right{display:none;}
+
+    /* ── Hamburger button ── */
+    .mob-menu-btn{
+      background:none;border:none;cursor:pointer;
+      width:36px;height:36px;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:5px;
+      border-radius:8px;transition:background .2s;padding:0;
+    }
+    .mob-menu-btn:hover{background:var(--border);}
+    .mob-menu-btn span{
+      display:block;width:20px;height:2px;
+      background:var(--text);border-radius:2px;
+      transition:transform .3s,opacity .3s;
+    }
+    body.sidebar-open .mob-menu-btn span:nth-child(1){transform:translateY(7px) rotate(45deg);}
+    body.sidebar-open .mob-menu-btn span:nth-child(2){opacity:0;}
+    body.sidebar-open .mob-menu-btn span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
+
+    /* ── Overlay ── */
+    .mob-overlay{
+      display:none;position:fixed;inset:0;
+      background:rgba(0,0,0,.6);z-index:210;
+      backdrop-filter:blur(2px);
+    }
+    body.sidebar-open .mob-overlay{display:block;}
+
+    /* ── Sidebar drawer ── */
+    .mob-sidebar{
+      position:fixed;top:0;left:0;bottom:0;
+      width:240px;background:var(--dark2);
+      border-right:1px solid var(--border);
+      z-index:220;
+      transform:translateX(-100%);
+      transition:transform .3s cubic-bezier(.4,0,.2,1);
+      display:flex;flex-direction:column;
+      overflow-y:auto;
+    }
+    body.sidebar-open .mob-sidebar{transform:translateX(0);}
+
+    .mob-sidebar-header{
+      padding:16px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;gap:10px;
+    }
+    .mob-sidebar-header svg{height:28px;width:auto;}
+
+    .mob-nav{padding:12px 0;flex:1;}
+    .mob-nav-item{
+      display:flex;align-items:center;gap:12px;
+      padding:12px 20px;cursor:pointer;
+      font-size:13px;color:var(--muted);
+      transition:background .15s,color .15s;
+      border-left:3px solid transparent;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .mob-nav-item:hover,.mob-nav-item.active{
+      background:rgba(226,55,68,.08);
+      color:var(--text);
+      border-left-color:var(--red);
+    }
+    .mob-nav-item .nav-icon{font-size:16px;width:20px;text-align:center;}
+    .mob-nav-item .nav-label{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase;}
+
+    .mob-sidebar-footer{
+      padding:16px;border-top:1px solid var(--border);
+    }
+    .mob-api-status{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);}
+
+    /* ── Main content pushed down below fixed header ── */
+    .hero{margin-top:54px;padding:16px;flex-direction:column;gap:12px;}
+    .hero::before{font-size:60px;}
+    .hero h1{font-size:17px;}
+    .hero p{font-size:11px;display:none;}
+    .hero-stats{width:100%;border-radius:10px;}
+    .hero-stat{padding:10px 8px;flex:1;}
+    .hero-stat .val{font-size:20px;}
+    .hero-stat .lbl{font-size:8px;letter-spacing:0;}
+
+    /* ── Page sections: hide all cards by default on mobile, show active ── */
+    #section-predict,#section-metrics,#section-orders,#section-timeline{display:none !important;}
+    #section-predict.mob-active,#section-metrics.mob-active,
+    #section-orders.mob-active,#section-timeline.mob-active{display:block !important;}
+
+    /* ── Content area ── */
+    .main{
+      padding:12px;gap:12px;
+      grid-template-columns:1fr;
+      display:block;
+    }
+    .card{
+      padding:16px;border-radius:12px;
+      margin-bottom:12px;
+    }
+    .full-width{grid-column:1;}
+    .card-title{font-size:11px;margin-bottom:14px;}
+
+    /* ── Form ── */
+    .form-grid{grid-template-columns:1fr 1fr;gap:10px;}
+    .field select,.field input[type=number]{font-size:16px;padding:11px 12px;}
+    .btn-predict{font-size:14px;padding:15px;border-radius:12px;}
     .result-row .val{font-size:14px;}
     .result-row .key{font-size:10px;}
+
+    /* ── Metrics ── */
     .metrics-grid{gap:8px;}
     .metric-box{padding:12px 8px;}
+    .metric-box .m-val{font-size:20px;}
     .metric-box .m-lbl{font-size:8px;}
+
+    /* ── Orders table ── */
+    .table-scroll{-webkit-overflow-scrolling:touch;}
+
+    /* ── Timeline ── */
     .tl-circle{width:36px;height:36px;font-size:14px;}
     .tl-label,.tl-time{font-size:9px;}
     .timeline::before{top:26px;}
-    footer{font-size:9px;padding:16px;}
-  }
 
-  /* ── TINY PHONES <= 380px ── */
-  @media(max-width:380px){
-    .hero-stat{padding:8px 6px;}
-    .hero-stat .lbl{letter-spacing:0;}
-    .metrics-grid{grid-template-columns:1fr;}
+    /* ── Bottom nav bar ── */
+    .mob-bottom-nav{
+      position:fixed;bottom:0;left:0;right:0;
+      display:flex;background:var(--dark2);
+      border-top:1px solid var(--border);
+      z-index:150;height:58px;
+    }
+    .mob-bottom-btn{
+      flex:1;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:3px;
+      background:none;border:none;cursor:pointer;
+      color:var(--muted);font-family:'DM Mono',monospace;
+      font-size:9px;letter-spacing:.5px;
+      transition:color .15s,background .15s;
+      -webkit-tap-highlight-color:transparent;
+      padding:0;
+    }
+    .mob-bottom-btn.active{color:var(--red);}
+    .mob-bottom-btn .bni{font-size:18px;}
+
+    /* ── Spacer so last card not hidden behind bottom nav ── */
+    .mob-bottom-spacer{height:70px;}
+
+    footer{font-size:9px;padding:14px;margin-bottom:58px;}
   }
 
   /* ── LARGE SCREENS >= 1200px ── */
@@ -247,6 +381,17 @@
     .card{padding:28px;}
   }
 
+  /* ── Mobile header inner row fills header ── */
+  @media(max-width:600px){
+    header{display:block;padding:0;height:54px;}
+    header > .logo,header > .header-right{display:none !important;}
+    .mobile-header{
+      display:flex !important;
+      align-items:center;justify-content:space-between;
+      padding:0 16px;height:54px;width:100%;
+    }
+  }
+
   /* ── TOUCH: disable hover lift ── */
   @media(hover:none){
     .btn-predict:hover{transform:none;opacity:1;}
@@ -255,7 +400,31 @@
 </head>
 <body>
 
+<!-- ── MOBILE OVERLAY & SIDEBAR ── -->
+<div class="mob-overlay" onclick="closeSidebar()"></div>
+<nav class="mob-sidebar" id="mobSidebar">
+  <div class="mob-sidebar-header">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 36" style="height:28px">
+      <defs><linearGradient id="rg2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#E23744"/><stop offset="100%" style="stop-color:#FF6B35"/></linearGradient></defs>
+      <circle cx="18" cy="18" r="16" fill="none" stroke="url(#rg2)" stroke-width="2"/>
+      <polygon points="21,8 16,17 19,17 15,28 23,16 19,16" fill="url(#rg2)" opacity=".95"/>
+      <text x="40" y="24" font-family="Arial Black,sans-serif" font-size="20" font-weight="900"><tspan fill="white">ZERO</tspan><tspan fill="url(#rg2)">WAIT</tspan></text>
+    </svg>
+  </div>
+  <div class="mob-nav">
+    <div class="mob-nav-item active" onclick="showSection('predict',this)"><span class="nav-icon">⚡</span><span class="nav-label">Predict</span></div>
+    <div class="mob-nav-item" onclick="showSection('metrics',this)"><span class="nav-icon">📊</span><span class="nav-label">Model Metrics</span></div>
+    <div class="mob-nav-item" onclick="showSection('orders',this)"><span class="nav-icon">🛵</span><span class="nav-label">Live Orders</span></div>
+    <div class="mob-nav-item" onclick="showSection('timeline',this)"><span class="nav-icon">🔄</span><span class="nav-label">How It Works</span></div>
+  </div>
+  <div class="mob-sidebar-footer">
+    <div class="mob-api-status"><div class="api-dot" id="apiDotSidebar"></div><span id="apiStatusSidebar">checking api…</span></div>
+    <div class="live-badge" style="margin-top:10px;justify-content:center"><div class="live-dot"></div>LIVE DASHBOARD</div>
+  </div>
+</nav>
+
 <header>
+  <!-- Desktop header content (hidden on mobile, replaced by .mobile-header) -->
   <div class="logo">
     <svg class="logo-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 60">
       <defs>
@@ -290,6 +459,18 @@
     </div>
     <div class="live-badge"><div class="live-dot"></div>LIVE DASHBOARD</div>
   </div>
+  <!-- Mobile header row (only visible on phone via CSS) -->
+  <div class="mobile-header" style="display:none">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 36" style="height:26px">
+      <defs><linearGradient id="rg3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#E23744"/><stop offset="100%" style="stop-color:#FF6B35"/></linearGradient></defs>
+      <circle cx="18" cy="18" r="16" fill="none" stroke="url(#rg3)" stroke-width="2"/>
+      <polygon points="21,8 16,17 19,17 15,28 23,16 19,16" fill="url(#rg3)" opacity=".95"/>
+      <text x="40" y="24" font-family="Arial Black,sans-serif" font-size="20" font-weight="900"><tspan fill="white">ZERO</tspan><tspan fill="url(#rg3)">WAIT</tspan></text>
+    </svg>
+    <button class="mob-menu-btn" onclick="toggleSidebar()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
 </header>
 
 <div class="hero">
@@ -307,8 +488,8 @@
 
 <div class="main">
 
-  <!-- PREDICT CARD -->
-  <div class="card">
+  <!-- PREDICT SECTION -->
+  <div class="card" id="section-predict">
     <div class="card-title">Live KPT Predictor</div>
     <div class="form-grid">
       <div class="field">
@@ -366,7 +547,7 @@
   </div>
 
   <!-- MODEL METRICS -->
-  <div class="card">
+  <div class="card" id="section-metrics">
     <div class="card-title">Model Performance</div>
     <div class="metrics-grid">
       <div class="metric-box"><div class="m-val" id="mR2">—</div><div class="m-lbl">R² SCORE</div></div>
@@ -385,7 +566,7 @@
   </div>
 
   <!-- LIVE ORDERS -->
-  <div class="card full-width">
+  <div class="card full-width" id="section-orders">
     <div class="card-title">Live Order Tracker <span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:'DM Mono';text-transform:none;letter-spacing:0">auto-refreshes every 5s</span></div>
     <div class="table-scroll">
     <table class="order-table">
@@ -401,7 +582,7 @@
   </div>
 
   <!-- TIMELINE -->
-  <div class="card full-width">
+  <div class="card full-width" id="section-timeline">
     <div class="card-title">How ZeroWait Works</div>
     <div class="timeline">
       <div class="tl-step"><div class="tl-circle done">📦</div><div class="tl-label">Order Placed</div><div class="tl-time">T + 0 min</div></div>
@@ -413,6 +594,23 @@
   </div>
 
 </div>
+
+<!-- ── MOBILE BOTTOM NAV ── -->
+<nav class="mob-bottom-nav">
+  <button class="mob-bottom-btn active" id="btn-predict" onclick="showSection('predict',null,this)">
+    <span class="bni">⚡</span>Predict
+  </button>
+  <button class="mob-bottom-btn" id="btn-metrics" onclick="showSection('metrics',null,this)">
+    <span class="bni">📊</span>Metrics
+  </button>
+  <button class="mob-bottom-btn" id="btn-orders" onclick="showSection('orders',null,this)">
+    <span class="bni">🛵</span>Orders
+  </button>
+  <button class="mob-bottom-btn" id="btn-timeline" onclick="showSection('timeline',null,this)">
+    <span class="bni">🔄</span>How It Works
+  </button>
+</nav>
+<div class="mob-bottom-spacer"></div>
 
 <footer>Built for <span>Zomathon</span> · Track 1: KPT Prediction & Rider Dispatch · <span>ZeroWait</span> Team</footer>
 
@@ -585,7 +783,102 @@
 
     setInterval(checkAPI, 30000);
     setInterval(generateOrders, 5000);
+
+    // ── Show mobile header only on phones ──
+    applyMobileHeader();
+    window.addEventListener('resize', applyMobileHeader);
   });
+
+  // ── Mobile header toggle ──────────────────────────────────────────────────
+  const SECTIONS = ['predict','metrics','orders','timeline'];
+
+  function applyMobileHeader() {
+    const isMobile = window.innerWidth <= 600;
+    if (!isMobile) {
+      // Desktop: clear inline styles — CSS grid takes over naturally
+      document.querySelector('.logo').style.display          = '';
+      document.querySelector('.header-right').style.display  = '';
+      document.querySelector('.mobile-header').style.display = 'none';
+      // Remove mob-active so CSS section hiding does not apply
+      SECTIONS.forEach(id => {
+        const el = document.getElementById('section-' + id);
+        if (el) { el.classList.remove('mob-active'); el.style.removeProperty('display'); }
+      });
+    } else {
+      // Mobile: show hamburger header, hide desktop header
+      document.querySelector('.logo').style.display          = 'none';
+      document.querySelector('.header-right').style.display  = 'none';
+      document.querySelector('.mobile-header').style.display = 'flex';
+      // Ensure the active section is marked (default: predict)
+      const hasActive = SECTIONS.some(id => {
+        const el = document.getElementById('section-' + id);
+        return el && el.classList.contains('mob-active');
+      });
+      if (!hasActive) {
+        const first = document.getElementById('section-predict');
+        if (first) first.classList.add('mob-active');
+      }
+    }
+  }
+
+  // ── Sidebar open/close ────────────────────────────────────────────────────
+  function toggleSidebar() {
+    document.body.classList.toggle('sidebar-open');
+  }
+  function closeSidebar() {
+    document.body.classList.remove('sidebar-open');
+  }
+
+  // ── Section switching (sidebar nav + bottom nav) ──────────────────────────
+  function showSection(name, sidebarItem, bottomBtn) {
+    // Only apply on mobile
+    if (window.innerWidth > 600) return;
+
+    // Hide all sections (remove mob-active — CSS handles hiding via ID selector)
+    SECTIONS.forEach(id => {
+      const el = document.getElementById('section-' + id);
+      if (el) el.classList.remove('mob-active');
+    });
+
+    // Show target section
+    const target = document.getElementById('section-' + name);
+    if (target) target.classList.add('mob-active');
+
+    // Update sidebar nav active state
+    document.querySelectorAll('.mob-nav-item').forEach(i => i.classList.remove('active'));
+    if (sidebarItem) sidebarItem.classList.add('active');
+    else {
+      const idx = {predict:0,metrics:1,orders:2,timeline:3}[name];
+      const navItems = document.querySelectorAll('.mob-nav-item');
+      if (navItems[idx]) navItems[idx].classList.add('active');
+    }
+
+    // Update bottom nav active state
+    document.querySelectorAll('.mob-bottom-btn').forEach(b => b.classList.remove('active'));
+    const bottomTarget = document.getElementById('btn-' + name);
+    if (bottomTarget) bottomTarget.classList.add('active');
+
+    closeSidebar();
+    window.scrollTo({top:0, behavior:'smooth'});
+
+    if (name === 'metrics') {
+      setTimeout(() => {
+        document.querySelectorAll('.bar-fill').forEach(b => b.style.width = b.dataset.w + '%');
+      }, 200);
+    }
+  }
+
+  // ── Sync sidebar api dot with main ───────────────────────────────────────
+  const _origCheckAPI = checkAPI;
+  async function checkAPI() {
+    await _origCheckAPI();
+    const mainDot  = document.getElementById('apiDot');
+    const sideDot  = document.getElementById('apiDotSidebar');
+    const sideText = document.getElementById('apiStatusSidebar');
+    const mainText = document.getElementById('apiStatusText');
+    if (sideDot)  sideDot.className  = mainDot ? mainDot.className : 'api-dot';
+    if (sideText) sideText.textContent = mainText ? mainText.textContent : '';
+  }
 </script>
 </body>
 </html>
