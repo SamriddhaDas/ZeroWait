@@ -228,7 +228,7 @@
   .table-scroll::-webkit-scrollbar{height:4px;}
   .table-scroll::-webkit-scrollbar-track{background:var(--dark2);}
   .table-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-  .order-table{min-width:640px;}
+  .order-table{min-width:780px;}
 
   /* ── FLUID TYPOGRAPHY ── */
   .hero h1{font-size:clamp(16px,3.5vw,26px);}
@@ -556,13 +556,6 @@
           oninput="document.getElementById('sizeVal').textContent=this.value"/>
       </div>
       <div class="field">
-        <label>RUSH HOUR?</label>
-        <select id="rush">
-          <option value="1">Yes — Rush Hour</option>
-          <option value="0">No — Off Peak</option>
-        </select>
-      </div>
-      <div class="field">
         <label>IS WEEKEND?</label>
         <select id="weekend">
           <option value="0">Weekday</option>
@@ -628,12 +621,12 @@
 
   <!-- LIVE ORDERS -->
   <div class="card full-width" id="section-orders">
-    <div class="card-title">Live Order Tracker <span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:'DM Mono';text-transform:none;letter-spacing:0">auto-refreshes every 5s</span></div>
+    <div class="card-title">Live Order Tracker <span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:'DM Mono';text-transform:none;letter-spacing:0">auto-refreshes every 15s</span></div>
     <div class="table-scroll">
     <table class="order-table">
       <thead>
         <tr>
-          <th>ORDER ID</th><th>RESTAURANT</th><th>CUISINE</th><th>ITEMS</th>
+          <th>ORDER ID</th><th>RESTAURANT</th><th>LOCATION</th><th>CUISINE</th><th>ITEMS</th>
           <th>PREDICTED KPT</th><th>DISPATCH IN</th><th>CUSTOMER ETA</th><th>STATUS</th>
         </tr>
       </thead>
@@ -740,12 +733,12 @@
       order_size:         parseInt(document.getElementById('orderSize').value),
       hour_of_day:        parseInt(document.getElementById('hour').value),
       is_weekend:         parseInt(document.getElementById('weekend').value),
-      is_rush_hour:       parseInt(document.getElementById('rush').value),
+      is_rush_hour:       isRushHour(parseInt(document.getElementById('hour').value)),
       restaurant_avg_kpt: selectedRestaurant ? selectedRestaurant.avg_kpt : parseFloat((Math.random()*30+10).toFixed(1)),
       rider_travel_time:  selectedRestaurant ? selectedRestaurant.travel_time : 10,
     };
 
-    addLog(`POST /predict → cuisine=${payload.cuisine_type} size=${payload.order_size} rush=${payload.is_rush_hour}`);
+    addLog(`POST /predict → cuisine=${payload.cuisine_type} size=${payload.order_size} rush=${payload.is_rush_hour ? 'yes' : 'no'}`);
 
     try {
       const r = await fetch(`${API_BASE}/predict`, {
@@ -785,15 +778,49 @@
   const statusEmoji = {preparing:'🍳',dispatched:'🛵',delivered:'✅'};
   const statusLabel = {preparing:'Preparing',dispatched:'Dispatched',delivered:'Delivered'};
 
+  // Realistic Indian area names for simulated orders (fallback when no OSM data)
+  const INDIAN_AREAS = [
+    'Koramangala, Bangalore','Bandra West, Mumbai','Connaught Place, Delhi',
+    'Jubilee Hills, Hyderabad','Anna Nagar, Chennai','Kalyani Nagar, Pune',
+    'Salt Lake, Kolkata','Gomti Nagar, Lucknow','Navrangpura, Ahmedabad',
+    'Arera Colony, Bhopal','MG Road, Kochi','Sector 17, Chandigarh',
+    'Indiranagar, Bangalore','Andheri East, Mumbai','Lajpat Nagar, Delhi',
+    'Gachibowli, Hyderabad','T. Nagar, Chennai','Viman Nagar, Pune',
+  ];
+
+  // Reverse-geocode a lat/lon to a short area label using Nominatim
+  const _geoCache = {};
+  async function reverseGeocode(lat, lon) {
+    const key = Math.round(lat*100)/100 + ',' + Math.round(lon*100)/100;
+    if (_geoCache[key]) return _geoCache[key];
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 4000);
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`,
+        {headers:{'Accept-Language':'en'}, signal: ctrl.signal}
+      );
+      const d = await r.json();
+      const a = d.address || {};
+      // Build short label: suburb/neighbourhood + city
+      const area = a.suburb || a.neighbourhood || a.village || a.town || a.county || '';
+      const city = a.city || a.state_district || a.state || '';
+      const label = [area, city].filter(Boolean).join(', ') || d.display_name.split(',').slice(0,2).join(',').trim();
+      _geoCache[key] = label;
+      return label;
+    } catch { return null; }
+  }
+
   async function fetchOrderKPT(cuisine, order_size, is_rush_hour) {
     try {
+      const h = new Date().getHours();
       const r = await fetch(`${API_BASE}/predict`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
           restaurant_id: Math.floor(Math.random()*49)+1,
-          cuisine_type: cuisine, order_size, is_rush_hour,
-          hour_of_day: new Date().getHours(),
+          cuisine_type: cuisine, order_size, is_rush_hour: isRushHour(h),
+          hour_of_day: h,
           is_weekend: [0,6].includes(new Date().getDay()) ? 1 : 0,
           restaurant_avg_kpt: parseFloat((Math.random()*30+10).toFixed(1)),
           rider_travel_time: 10,
@@ -810,18 +837,44 @@
 
   async function generateOrders() {
     const tbody = document.getElementById('ordersBody');
-    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:20px">Loading orders…</td></tr>';
-    const rows = await Promise.all(Array.from({length:6}, async () => {
-      const ri     = Math.floor(Math.random()*5);
+    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:20px">Loading orders…</td></tr>';
+
+    // If user has searched nearby restaurants, use real OSM data for some rows
+    const useReal = allNearbyRestaurants && allNearbyRestaurants.length > 0;
+
+    const rows = await Promise.all(Array.from({length:6}, async (_, rowIdx) => {
+      let name, cuisine, location;
+
+      if (useReal && rowIdx < 4) {
+        // Use real nearby restaurant
+        const r = allNearbyRestaurants[rowIdx % allNearbyRestaurants.length];
+        name    = r.name;
+        cuisine = r.cuisine;
+        // Reverse geocode the restaurant's real coordinates
+        const geo = await reverseGeocode(
+          selectedLocation.lat + (Math.random()-0.5)*0.02,
+          selectedLocation.lon + (Math.random()-0.5)*0.02
+        );
+        location = geo || r.addr || INDIAN_AREAS[rowIdx % INDIAN_AREAS.length];
+      } else {
+        // Simulated restaurant
+        const ri = Math.floor(Math.random()*5);
+        name     = restaurants[ri];
+        cuisine  = cuisines[ri];
+        location = INDIAN_AREAS[Math.floor(Math.random()*INDIAN_AREAS.length)];
+      }
+
       const items  = Math.floor(Math.random()*6)+1;
       const isRush = Math.random()>.5?1:0;
-      const pred   = await fetchOrderKPT(cuisines[ri], items, isRush);
+      const pred   = await fetchOrderKPT(cuisine, items, isRush);
       const status = statuses[Math.floor(Math.random()*3)];
       const ordId  = '#ZW'+Math.floor(Math.random()*90000+10000);
+
       return `<tr>
         <td style="color:var(--muted)">${ordId}</td>
-        <td>${restaurants[ri]}</td>
-        <td>${cuisines[ri]}</td>
+        <td>${escHtml(name)}</td>
+        <td style="color:var(--muted);font-size:11px">${escHtml(location)}</td>
+        <td>${cuisine}</td>
         <td>${items}</td>
         <td style="color:var(--orange);font-weight:600">${pred.predicted_kpt} min</td>
         <td style="color:var(--yellow)">${Math.max(0,pred.dispatch_at_minutes).toFixed(0)} min</td>
@@ -843,7 +896,7 @@
     }, 700);
 
     setInterval(checkAPI, 30000);
-    setInterval(generateOrders, 5000);
+    setInterval(generateOrders, 15000);
 
     // ── Show mobile header only on phones ──
     applyMobileHeader();
@@ -941,6 +994,12 @@
     if (sideText) sideText.textContent = mainText ? mainText.textContent : '';
   }
 
+  // ── Auto rush-hour detection from time of day ────────────────────
+  function isRushHour(hour) {
+    // Morning rush: 8-10, Lunch rush: 12-14, Evening rush: 18-21
+    return ((hour >= 8 && hour <= 10) || (hour >= 12 && hour <= 14) || (hour >= 18 && hour <= 21)) ? 1 : 0;
+  }
+
   // ══════════════════════════════════════════════════════════════════
   // OPENSTREETMAP RESTAURANT SEARCH — Nominatim + Overpass API
   // ══════════════════════════════════════════════════════════════════
@@ -1018,8 +1077,11 @@
     const parts = r.display_name.split(',');
     const label = parts.slice(0,3).join(',').trim();
 
-    document.getElementById('addressInput').value = label;
+    const addrInput = document.getElementById('addressInput');
+    addrInput.value = label;
+    addrInput.blur(); // prevent re-opening on focus
     drop.classList.remove('open');
+    drop.innerHTML = ''; // clear so it cannot re-appear
 
     // Show tag
     const tag = document.getElementById('addressTag');
@@ -1057,55 +1119,118 @@
   }
 
   // ── 2. RESTAURANT SEARCH (Overpass API) ──────────────────────────
+  // Multiple Overpass mirrors — tries each until one succeeds
+  const OVERPASS_MIRRORS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  ];
+
+  async function overpassFetch(query) {
+    for (const mirror of OVERPASS_MIRRORS) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000); // 12s timeout per mirror
+        const r = await fetch(mirror + '?data=' + encodeURIComponent(query), {signal: ctrl.signal});
+        clearTimeout(timer);
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d && d.elements) return d;
+      } catch(e) { /* try next mirror */ }
+    }
+    throw new Error('All Overpass mirrors failed');
+  }
+
   async function fetchNearbyRestaurants(lat, lon, query) {
     const drop = document.getElementById('restaurantDrop');
-    drop.innerHTML = '<div class="drop-loading">🔍 Fetching nearby restaurants…</div>';
+    drop.innerHTML = '<div class="drop-loading">🔍 Finding restaurants nearby…</div>';
     drop.classList.add('open');
 
-    try {
-      // Overpass QL: get amenity=restaurant + fast_food within 3km
-      const radius = 3000;
-      const overpassQ = '[out:json][timeout:15];(node["amenity"~"restaurant|fast_food|cafe"](around:'+radius+','+lat+','+lon+'););out body 80;';
-      const overpassUrl = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(overpassQ);
+    // Try 5km first, expand to 8km if too few results
+    for (const radius of [5000, 8000]) {
+      try {
+        // Include ways (chains like McDonald's often mapped as ways) + nodes
+        const overpassQ =
+          '[out:json][timeout:20];' +
+          '(' +
+          '  node["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["name"](around:' + radius + ',' + lat + ',' + lon + ');' +
+          '  way["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["name"](around:' + radius + ',' + lat + ',' + lon + ');' +
+          ');' +
+          'out center 120;';
 
-      const r   = await fetch(overpassUrl);
-      const d   = await r.json();
-      let nodes = d.elements || [];
+        drop.innerHTML = '<div class="drop-loading">🔍 Searching ' + (radius/1000) + 'km radius…</div>';
 
-      // Filter: must have a name
-      nodes = nodes.filter(n => n.tags && n.tags.name);
+        const d = await overpassFetch(overpassQ);
+        let nodes = d.elements || [];
 
-      // Build structured list
-      allNearbyRestaurants = nodes.map((n, i) => {
-        const cuisineTag = n.tags.cuisine || n.tags.food || '';
-        const mapped     = mapCuisine(cuisineTag.split(';')[0]) || 'Indian';
-        const dist       = haversine(lat, lon, n.lat, n.lon);
-        const travelMin  = Math.max(3, Math.round(dist / 333)); // ~20km/h avg rider speed
-        return {
-          id:          i + 1,
-          osm_id:      n.id,
-          name:        n.tags.name,
-          cuisine_tag: cuisineTag,
-          cuisine:     mapped,
-          avg_kpt:     estimateKpt(mapped) + (Math.random()*6 - 3 | 0),
-          travel_time: travelMin,
-          dist_m:      Math.round(dist),
-          addr:        [n.tags['addr:street'], n.tags['addr:city']].filter(Boolean).join(', '),
-        };
-      });
+        // Normalise ways (have .center) to same shape as nodes
+        nodes = nodes.map(n => ({
+          ...n,
+          lat: n.lat ?? n.center?.lat,
+          lon: n.lon ?? n.center?.lon,
+        }));
 
-      // Sort by distance
-      allNearbyRestaurants.sort((a,b) => a.dist_m - b.dist_m);
+        // Must have name + valid coords
+        nodes = nodes.filter(n => n.tags?.name && n.lat && n.lon);
 
-      if (!allNearbyRestaurants.length) {
-        drop.innerHTML = '<div class="drop-empty">No restaurants found nearby. Try a broader area.</div>';
+        // Deduplicate by name + approximate location
+        const seen = new Set();
+        nodes = nodes.filter(n => {
+          const key = n.tags.name.toLowerCase() + '|' + Math.round(n.lat*1000) + '|' + Math.round(n.lon*1000);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        if (nodes.length < 3 && radius < 8000) {
+          // Too few — try bigger radius
+          continue;
+        }
+
+        // Build structured list
+        allNearbyRestaurants = nodes.map((n, i) => {
+          const cuisineTag = n.tags.cuisine || n.tags.food || n.tags.amenity || '';
+          const mapped     = mapCuisine(cuisineTag.split(';')[0]) || guessFromName(n.tags.name);
+          const dist       = haversine(lat, lon, n.lat, n.lon);
+          const travelMin  = Math.max(2, Math.round(dist / 300)); // ~18km/h rider
+          return {
+            id:          i + 1,
+            osm_id:      n.id,
+            name:        n.tags.name,
+            cuisine_tag: cuisineTag,
+            cuisine:     mapped,
+            avg_kpt:     estimateKpt(mapped) + (Math.floor(Math.random()*7) - 3),
+            travel_time: travelMin,
+            dist_m:      Math.round(dist),
+            addr:        [n.tags['addr:street'], n.tags['addr:suburb'], n.tags['addr:city']].filter(Boolean).join(', '),
+          };
+        });
+
+        allNearbyRestaurants.sort((a,b) => a.dist_m - b.dist_m);
+
+        if (!allNearbyRestaurants.length) {
+          drop.innerHTML = '<div class="drop-empty">No restaurants found. Try a different area or a landmark name.</div>';
+          return;
+        }
+
+        renderRestaurantDrop(query);
+        return; // success — stop trying radii
+
+      } catch(e) {
+        drop.innerHTML = '<div class="drop-empty">⚠️ Could not reach restaurant data service. Please try again in a moment.</div>';
         return;
       }
-
-      renderRestaurantDrop(query);
-    } catch(e) {
-      drop.innerHTML = '<div class="drop-empty">Failed to fetch restaurants — check connection</div>';
     }
+  }
+
+  // Guess cuisine from restaurant name keywords (fallback when OSM has no cuisine tag)
+  function guessFromName(name) {
+    const n = name.toLowerCase();
+    if (/biryani|dum/.test(n))                        return 'Biryani';
+    if (/burger|kfc|mcdonald|wendy|five.guys/.test(n)) return 'Burger';
+    if (/pizza|domino|papa|little.caesar/.test(n))     return 'Pizza';
+    if (/chinese|wok|noodle|manchurian|dragon/.test(n))return 'Chinese';
+    return 'Indian';
   }
 
   function renderRestaurantDrop(query) {
@@ -1158,8 +1283,12 @@
 
   function selectRestaurant(idx, r) {
     selectedRestaurant = r;
-    document.getElementById('restaurantInput').value = r.name;
+    const input = document.getElementById('restaurantInput');
+    input.value = r.name;
+    // Blur immediately so onRestaurantFocus does not re-open the dropdown
+    input.blur();
     document.getElementById('restaurantDrop').classList.remove('open');
+    document.getElementById('restaurantDrop').innerHTML = '';
 
     // Show tag
     const tag = document.getElementById('restaurantTag');
