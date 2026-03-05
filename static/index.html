@@ -96,6 +96,48 @@
   }
   .field select:focus,.field input:focus{border-color:var(--red);}
   .field input[type=range]{width:100%;accent-color:var(--red);margin-top:6px;}
+
+  /* ── SEARCH FIELDS ── */
+  .search-wrap{position:relative;}
+  .search-wrap .search-icon{
+    position:absolute;left:12px;top:50%;transform:translateY(-50%);
+    font-size:13px;pointer-events:none;opacity:.5;
+  }
+  .search-wrap input{padding-left:34px !important;}
+  .search-wrap .clear-btn{
+    position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    background:none;border:none;color:var(--muted);cursor:pointer;
+    font-size:16px;line-height:1;padding:2px 4px;display:none;
+  }
+  .search-wrap input:not(:placeholder-shown) ~ .clear-btn{display:block;}
+  .search-dropdown{
+    position:absolute;top:calc(100% + 4px);left:0;right:0;
+    background:var(--dark2);border:1px solid var(--border);
+    border-radius:10px;z-index:300;max-height:200px;overflow-y:auto;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;
+  }
+  .search-dropdown.open{display:block;}
+  .search-dropdown::-webkit-scrollbar{width:4px;}
+  .search-dropdown::-webkit-scrollbar-track{background:transparent;}
+  .search-dropdown::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+  .drop-item{
+    padding:10px 14px;cursor:pointer;font-size:12px;
+    border-bottom:1px solid rgba(46,42,38,.5);
+    transition:background .15s;display:flex;flex-direction:column;gap:2px;
+  }
+  .drop-item:last-child{border-bottom:none;}
+  .drop-item:hover,.drop-item.focused{background:rgba(226,55,68,.1);}
+  .drop-item .di-name{color:var(--text);font-weight:500;}
+  .drop-item .di-sub{color:var(--muted);font-size:10px;}
+  .drop-loading{padding:12px 14px;font-size:11px;color:var(--muted);text-align:center;}
+  .drop-empty{padding:12px 14px;font-size:11px;color:var(--muted);text-align:center;}
+  .selected-tag{
+    display:inline-flex;align-items:center;gap:6px;margin-top:6px;
+    background:rgba(226,55,68,.12);border:1px solid rgba(226,55,68,.3);
+    color:var(--red);padding:4px 10px;border-radius:20px;font-size:10px;
+  }
+  .selected-tag button{background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:0;}
+  .field-full{grid-column:1/-1;}
   .btn-predict{
     width:100%;background:linear-gradient(135deg,var(--red),var(--orange));
     border:none;color:white;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;
@@ -527,9 +569,28 @@
           <option value="1">Weekend</option>
         </select>
       </div>
-      <div class="field">
-        <label>RIDER TRAVEL TIME (min)</label>
-        <input type="number" id="riderTime" value="10" min="1" max="30"/>
+      <div class="field field-full">
+        <label>SEARCH AREA / ADDRESS</label>
+        <div class="search-wrap" id="addressWrap">
+          <span class="search-icon">📍</span>
+          <input type="text" id="addressInput" placeholder="e.g. Koramangala, Bangalore" autocomplete="off"
+            oninput="onAddressInput(this.value)" onfocus="onAddressFocus()" onblur="onAddressBlur()"/>
+          <button class="clear-btn" onclick="clearAddress()">✕</button>
+          <div class="search-dropdown" id="addressDrop"></div>
+        </div>
+        <div id="addressTag" style="display:none"></div>
+      </div>
+      <div class="field field-full">
+        <label>NEARBY RESTAURANT <span id="restaurantAreaLabel" style="color:var(--muted);font-size:9px"></span></label>
+        <div class="search-wrap" id="restaurantWrap">
+          <span class="search-icon">🍽️</span>
+          <input type="text" id="restaurantInput" placeholder="Search restaurant name…" autocomplete="off"
+            oninput="onRestaurantInput(this.value)" onfocus="onRestaurantFocus()" onblur="onRestaurantBlur()"
+            disabled/>
+          <button class="clear-btn" onclick="clearRestaurant()">✕</button>
+          <div class="search-dropdown" id="restaurantDrop"></div>
+        </div>
+        <div id="restaurantTag" style="display:none"></div>
       </div>
     </div>
     <button class="btn-predict" id="predictBtn" onclick="predict()">
@@ -674,14 +735,14 @@
     errMsg.style.display  = 'none';
 
     const payload = {
-      restaurant_id:      Math.floor(Math.random()*49)+1,
+      restaurant_id:      selectedRestaurant ? selectedRestaurant.id : Math.floor(Math.random()*49)+1,
       cuisine_type:       document.getElementById('cuisine').value,
       order_size:         parseInt(document.getElementById('orderSize').value),
       hour_of_day:        parseInt(document.getElementById('hour').value),
       is_weekend:         parseInt(document.getElementById('weekend').value),
       is_rush_hour:       parseInt(document.getElementById('rush').value),
-      restaurant_avg_kpt: parseFloat((Math.random()*30+10).toFixed(1)),
-      rider_travel_time:  parseFloat(document.getElementById('riderTime').value),
+      restaurant_avg_kpt: selectedRestaurant ? selectedRestaurant.avg_kpt : parseFloat((Math.random()*30+10).toFixed(1)),
+      rider_travel_time:  selectedRestaurant ? selectedRestaurant.travel_time : 10,
     };
 
     addLog(`POST /predict → cuisine=${payload.cuisine_type} size=${payload.order_size} rush=${payload.is_rush_hour}`);
@@ -879,6 +940,293 @@
     if (sideDot)  sideDot.className  = mainDot ? mainDot.className : 'api-dot';
     if (sideText) sideText.textContent = mainText ? mainText.textContent : '';
   }
+
+  // ══════════════════════════════════════════════════════════════════
+  // OPENSTREETMAP RESTAURANT SEARCH — Nominatim + Overpass API
+  // ══════════════════════════════════════════════════════════════════
+
+  let selectedLocation  = null;  // {lat, lon, display_name}
+  let selectedRestaurant = null; // {id, name, cuisine, avg_kpt, travel_time}
+  let allNearbyRestaurants = []; // full fetched list for filtering
+  let addressDebounce   = null;
+  let restaurantDebounce = null;
+  let addressBlurTimer  = null;
+  let restaurantBlurTimer = null;
+  let focusedDropIdx    = -1;
+
+  // ── Cuisine tag → model cuisine type mapping ──────────────────────
+  const CUISINE_MAP = {
+    indian:'Indian', north_indian:'Indian', south_indian:'Indian',
+    punjabi:'Indian', mughlai:'Indian', kerala:'Indian',
+    chinese:'Chinese', asian:'Chinese', thai:'Chinese', japanese:'Chinese',
+    pizza:'Pizza', italian:'Pizza',
+    burger:'Burger', american:'Burger', fast_food:'Burger', sandwich:'Burger',
+    biryani:'Biryani', hyderabadi:'Biryani',
+    mexican:'Burger', continental:'Indian', cafe:'Indian',
+  };
+  function mapCuisine(tag) {
+    if (!tag) return null;
+    const t = tag.toLowerCase().replace(/[^a-z_]/g,'');
+    return CUISINE_MAP[t] || null;
+  }
+
+  // ── Estimate avg_kpt from cuisine ────────────────────────────────
+  const KPT_BY_CUISINE = {Indian:28,Chinese:22,Pizza:20,Burger:18,Biryani:30};
+  function estimateKpt(cuisine) {
+    return KPT_BY_CUISINE[cuisine] || 25;
+  }
+
+  // ── 1. ADDRESS SEARCH (Nominatim) ────────────────────────────────
+  function onAddressInput(val) {
+    clearTimeout(addressDebounce);
+    const drop = document.getElementById('addressDrop');
+    if (val.length < 2) { drop.classList.remove('open'); return; }
+    drop.innerHTML = '<div class="drop-loading">🔍 Searching…</div>';
+    drop.classList.add('open');
+    addressDebounce = setTimeout(() => searchAddress(val), 400);
+  }
+
+  async function searchAddress(q) {
+    const drop = document.getElementById('addressDrop');
+    try {
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=6&addressdetails=1&q=' + encodeURIComponent(q);
+      const r = await fetch(url, {headers:{'Accept-Language':'en'}});
+      const results = await r.json();
+      if (!results.length) {
+        drop.innerHTML = '<div class="drop-empty">No locations found</div>';
+        return;
+      }
+      drop.innerHTML = results.map((p,i) => {
+        const parts = p.display_name.split(',');
+        const name  = parts.slice(0,2).join(',').trim();
+        const sub   = parts.slice(2,4).join(',').trim();
+        return '<div class="drop-item" data-idx="'+i+'" onmousedown="selectAddress('+i+')">' +
+               '<span class="di-name">📍 '+escHtml(name)+'</span>' +
+               '<span class="di-sub">'+escHtml(sub)+'</span></div>';
+      }).join('');
+      drop._results = results;
+      focusedDropIdx = -1;
+    } catch(e) {
+      drop.innerHTML = '<div class="drop-empty">Search error — check connection</div>';
+    }
+  }
+
+  function selectAddress(idx) {
+    const drop = document.getElementById('addressDrop');
+    const r    = drop._results[idx];
+    selectedLocation = {lat: parseFloat(r.lat), lon: parseFloat(r.lon), display_name: r.display_name};
+    const parts = r.display_name.split(',');
+    const label = parts.slice(0,3).join(',').trim();
+
+    document.getElementById('addressInput').value = label;
+    drop.classList.remove('open');
+
+    // Show tag
+    const tag = document.getElementById('addressTag');
+    tag.innerHTML = '<span class="selected-tag">📍 '+escHtml(label)+' <button onclick="clearAddress()">✕</button></span>';
+    tag.style.display = 'block';
+
+    // Enable restaurant search
+    const ri = document.getElementById('restaurantInput');
+    ri.disabled = false;
+    ri.placeholder = 'Search restaurants near this area…';
+    document.getElementById('restaurantAreaLabel').textContent = '— near ' + parts[0].trim();
+
+    // Auto-fetch restaurants
+    fetchNearbyRestaurants(selectedLocation.lat, selectedLocation.lon, '');
+  }
+
+  function onAddressFocus() {
+    clearTimeout(addressBlurTimer);
+    const val = document.getElementById('addressInput').value;
+    if (val.length >= 2) document.getElementById('addressDrop').classList.add('open');
+  }
+  function onAddressBlur() {
+    addressBlurTimer = setTimeout(() => document.getElementById('addressDrop').classList.remove('open'), 200);
+  }
+  function clearAddress() {
+    selectedLocation = null;
+    document.getElementById('addressInput').value = '';
+    document.getElementById('addressDrop').classList.remove('open');
+    document.getElementById('addressTag').style.display = 'none';
+    clearRestaurant();
+    document.getElementById('restaurantInput').disabled = true;
+    document.getElementById('restaurantInput').placeholder = 'Search restaurant name…';
+    document.getElementById('restaurantAreaLabel').textContent = '';
+    allNearbyRestaurants = [];
+  }
+
+  // ── 2. RESTAURANT SEARCH (Overpass API) ──────────────────────────
+  async function fetchNearbyRestaurants(lat, lon, query) {
+    const drop = document.getElementById('restaurantDrop');
+    drop.innerHTML = '<div class="drop-loading">🔍 Fetching nearby restaurants…</div>';
+    drop.classList.add('open');
+
+    try {
+      // Overpass QL: get amenity=restaurant + fast_food within 3km
+      const radius = 3000;
+      const overpassQ = '[out:json][timeout:15];(node["amenity"~"restaurant|fast_food|cafe"](around:'+radius+','+lat+','+lon+'););out body 80;';
+      const overpassUrl = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(overpassQ);
+
+      const r   = await fetch(overpassUrl);
+      const d   = await r.json();
+      let nodes = d.elements || [];
+
+      // Filter: must have a name
+      nodes = nodes.filter(n => n.tags && n.tags.name);
+
+      // Build structured list
+      allNearbyRestaurants = nodes.map((n, i) => {
+        const cuisineTag = n.tags.cuisine || n.tags.food || '';
+        const mapped     = mapCuisine(cuisineTag.split(';')[0]) || 'Indian';
+        const dist       = haversine(lat, lon, n.lat, n.lon);
+        const travelMin  = Math.max(3, Math.round(dist / 333)); // ~20km/h avg rider speed
+        return {
+          id:          i + 1,
+          osm_id:      n.id,
+          name:        n.tags.name,
+          cuisine_tag: cuisineTag,
+          cuisine:     mapped,
+          avg_kpt:     estimateKpt(mapped) + (Math.random()*6 - 3 | 0),
+          travel_time: travelMin,
+          dist_m:      Math.round(dist),
+          addr:        [n.tags['addr:street'], n.tags['addr:city']].filter(Boolean).join(', '),
+        };
+      });
+
+      // Sort by distance
+      allNearbyRestaurants.sort((a,b) => a.dist_m - b.dist_m);
+
+      if (!allNearbyRestaurants.length) {
+        drop.innerHTML = '<div class="drop-empty">No restaurants found nearby. Try a broader area.</div>';
+        return;
+      }
+
+      renderRestaurantDrop(query);
+    } catch(e) {
+      drop.innerHTML = '<div class="drop-empty">Failed to fetch restaurants — check connection</div>';
+    }
+  }
+
+  function renderRestaurantDrop(query) {
+    const drop = document.getElementById('restaurantDrop');
+    let list = allNearbyRestaurants;
+    if (query && query.length > 0) {
+      const q = query.toLowerCase();
+      list = list.filter(r => r.name.toLowerCase().includes(q));
+    }
+    // Show top 20
+    list = list.slice(0, 20);
+    if (!list.length) {
+      drop.innerHTML = '<div class="drop-empty">No match found</div>';
+      drop.classList.add('open');
+      return;
+    }
+    drop.innerHTML = list.map((r,i) =>
+      '<div class="drop-item" data-idx="'+i+'" onmousedown="selectRestaurant('+i+','+JSON.stringify(r).replace(/"/g,'&quot;')+')">' +
+      '<span class="di-name">'+escHtml(r.name)+'</span>' +
+      '<span class="di-sub">'+escHtml(r.cuisine)+' · '+r.dist_m+'m away · ~'+r.travel_time+' min ride</span>' +
+      '</div>'
+    ).join('');
+    drop._filteredList = list;
+    drop.classList.add('open');
+    focusedDropIdx = -1;
+  }
+
+  function onRestaurantInput(val) {
+    clearTimeout(restaurantDebounce);
+    if (!selectedLocation) return;
+    if (!allNearbyRestaurants.length) {
+      fetchNearbyRestaurants(selectedLocation.lat, selectedLocation.lon, val);
+      return;
+    }
+    restaurantDebounce = setTimeout(() => renderRestaurantDrop(val), 150);
+  }
+
+  function onRestaurantFocus() {
+    clearTimeout(restaurantBlurTimer);
+    if (!selectedLocation) return;
+    if (!allNearbyRestaurants.length) {
+      fetchNearbyRestaurants(selectedLocation.lat, selectedLocation.lon, '');
+    } else {
+      renderRestaurantDrop(document.getElementById('restaurantInput').value);
+    }
+  }
+  function onRestaurantBlur() {
+    restaurantBlurTimer = setTimeout(() => document.getElementById('restaurantDrop').classList.remove('open'), 200);
+  }
+
+  function selectRestaurant(idx, r) {
+    selectedRestaurant = r;
+    document.getElementById('restaurantInput').value = r.name;
+    document.getElementById('restaurantDrop').classList.remove('open');
+
+    // Show tag
+    const tag = document.getElementById('restaurantTag');
+    tag.innerHTML = '<span class="selected-tag">🍽️ '+escHtml(r.name)+
+      ' <span style="opacity:.7">· '+r.cuisine+' · '+r.dist_m+'m</span>'+
+      ' <button onclick="clearRestaurant()">✕</button></span>';
+    tag.style.display = 'block';
+
+    // Auto-set cuisine dropdown
+    const sel = document.getElementById('cuisine');
+    for (let i=0; i<sel.options.length; i++) {
+      if (sel.options[i].value === r.cuisine || sel.options[i].text === r.cuisine) {
+        sel.selectedIndex = i; break;
+      }
+    }
+
+    addLog('🍽️ Selected: '+r.name+' ('+r.cuisine+', ~'+r.travel_time+'min ride)', 'info');
+  }
+
+  function clearRestaurant() {
+    selectedRestaurant = null;
+    document.getElementById('restaurantInput').value = '';
+    document.getElementById('restaurantDrop').classList.remove('open');
+    document.getElementById('restaurantTag').style.display = 'none';
+  }
+
+  // ── Haversine distance (metres) ───────────────────────────────────
+  function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = (lat2-lat1)*Math.PI/180;
+    const dLon = (lon2-lon1)*Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // ── HTML escape helper ────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Keyboard navigation for dropdowns ────────────────────────────
+  document.addEventListener('keydown', e => {
+    const addrOpen = document.getElementById('addressDrop').classList.contains('open');
+    const restOpen = document.getElementById('restaurantDrop').classList.contains('open');
+    if (!addrOpen && !restOpen) return;
+    const dropId = addrOpen ? 'addressDrop' : 'restaurantDrop';
+    const drop   = document.getElementById(dropId);
+    const items  = drop.querySelectorAll('.drop-item');
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      focusedDropIdx = Math.min(focusedDropIdx+1, items.length-1);
+      items.forEach((el,i) => el.classList.toggle('focused', i===focusedDropIdx));
+      items[focusedDropIdx].scrollIntoView({block:'nearest'});
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      focusedDropIdx = Math.max(focusedDropIdx-1, 0);
+      items.forEach((el,i) => el.classList.toggle('focused', i===focusedDropIdx));
+      items[focusedDropIdx].scrollIntoView({block:'nearest'});
+    } else if (e.key === 'Enter' && focusedDropIdx >= 0) {
+      e.preventDefault();
+      items[focusedDropIdx].dispatchEvent(new MouseEvent('mousedown'));
+    } else if (e.key === 'Escape') {
+      drop.classList.remove('open');
+    }
+  });
+
 </script>
 </body>
 </html>
