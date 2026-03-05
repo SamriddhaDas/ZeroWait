@@ -207,15 +207,6 @@
   .tl-label{font-size:11px;color:var(--muted);text-align:center;}
   .tl-time{font-size:12px;color:var(--text);font-weight:500;margin-top:2px;}
 
-  /* ── API LOG ── */
-  .api-log{
-    background:var(--dark2);border:1px solid var(--border);border-radius:8px;
-    padding:14px;font-size:11px;color:var(--muted);margin-top:16px;
-    max-height:110px;overflow-y:auto;font-family:'DM Mono',monospace;line-height:1.7;
-  }
-  .log-entry.success{color:var(--green);}
-  .log-entry.error{color:var(--red);}
-  .log-entry.info{color:var(--blue);}
 
   footer{
     text-align:center;padding:24px;color:var(--muted);font-size:11px;
@@ -597,7 +588,7 @@
       <div class="result-row"><span class="key">Customer ETA</span><span class="val eta" id="resETA">—</span></div>
       <div class="result-row"><span class="key">Confidence</span><span class="val conf" id="resConf">—</span></div>
     </div>
-    <div class="api-log" id="apiLog"><div class="log-entry info">› Ready. Hit PREDICT to call the API.</div></div>
+
   </div>
 
   <!-- MODEL METRICS -->
@@ -707,15 +698,6 @@
   }
 
   // ── Predict ───────────────────────────────────────────────────────────────
-  function addLog(msg, type='info') {
-    const log = document.getElementById('apiLog');
-    const el  = document.createElement('div');
-    el.className = `log-entry ${type}`;
-    el.textContent = `› ${new Date().toLocaleTimeString()} ${msg}`;
-    log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
-  }
-
   async function predict() {
     const btn     = document.getElementById('predictBtn');
     const spinner = document.getElementById('btnSpinner');
@@ -738,8 +720,6 @@
       rider_travel_time:  selectedRestaurant ? selectedRestaurant.travel_time : 10,
     };
 
-    addLog(`POST /predict → cuisine=${payload.cuisine_type} size=${payload.order_size} rush=${payload.is_rush_hour ? 'yes' : 'no'}`);
-
     try {
       const r = await fetch(`${API_BASE}/predict`, {
         method: 'POST',
@@ -758,12 +738,9 @@
       document.getElementById('resETA').textContent      = d.customer_eta + ' min from now';
       document.getElementById('resConf').textContent     = d.confidence.toUpperCase();
       document.getElementById('resultBox').classList.add('show');
-
-      addLog(`✓ KPT=${d.predicted_kpt}min  dispatch=${d.dispatch_at_minutes}min  ETA=${d.customer_eta}min`, 'success');
     } catch(e) {
       errMsg.textContent   = '⚠ ' + e.message + ' — Is the API server running?';
       errMsg.style.display = 'block';
-      addLog(`✗ ${e.message}`, 'error');
     } finally {
       btn.disabled          = false;
       spinner.style.display = 'none';
@@ -1304,8 +1281,6 @@
         sel.selectedIndex = i; break;
       }
     }
-
-    addLog('🍽️ Selected: '+r.name+' ('+r.cuisine+', ~'+r.travel_time+'min ride)', 'info');
   }
 
   function clearRestaurant() {
