@@ -72,7 +72,6 @@
   .card{
     background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;
     animation:fadeUp .5s ease forwards;opacity:0;transform:translateY(16px);
-    overflow:visible;
   }
   .card:nth-child(1){animation-delay:.05s;}
   .card:nth-child(2){animation-delay:.1s;}
@@ -99,8 +98,7 @@
   .field input[type=range]{width:100%;accent-color:var(--red);margin-top:6px;}
 
   /* ── SEARCH FIELDS ── */
-  .search-wrap{position:relative;z-index:1;}
-  .field.field-full{overflow:visible;}
+  .search-wrap{position:relative;}
   .search-wrap .search-icon{
     position:absolute;left:12px;top:50%;transform:translateY(-50%);
     font-size:13px;pointer-events:none;opacity:.5;
@@ -112,13 +110,11 @@
     font-size:16px;line-height:1;padding:2px 4px;display:none;
   }
   .search-wrap input:not(:placeholder-shown) ~ .clear-btn{display:block;}
-  /* Dropdown uses fixed positioning — set via JS to escape all parent stacking contexts */
   .search-dropdown{
-    position:fixed;
+    position:absolute;top:calc(100% + 4px);left:0;right:0;
     background:var(--dark2);border:1px solid var(--border);
-    border-radius:10px;z-index:9999;max-height:220px;overflow-y:auto;
-    box-shadow:0 12px 40px rgba(0,0,0,.85);display:none;
-    min-width:200px;
+    border-radius:10px;z-index:300;max-height:200px;overflow-y:auto;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;
   }
   .search-dropdown.open{display:block;}
   .search-dropdown::-webkit-scrollbar{width:4px;}
@@ -882,18 +878,6 @@
     // ── Show mobile header only on phones ──
     applyMobileHeader();
     window.addEventListener('resize', applyMobileHeader);
-
-    // ── Reposition open dropdowns on scroll/resize ──
-    function repositionOpenDropdowns() {
-      const addrDrop = document.getElementById('addressDrop');
-      const restDrop = document.getElementById('restaurantDrop');
-      if (addrDrop.classList.contains('open'))
-        positionDropdown(document.getElementById('addressInput'), addrDrop);
-      if (restDrop.classList.contains('open'))
-        positionDropdown(document.getElementById('restaurantInput'), restDrop);
-    }
-    window.addEventListener('scroll', repositionOpenDropdowns, true);
-    window.addEventListener('resize', repositionOpenDropdowns);
   });
 
   // ── Mobile header toggle ──────────────────────────────────────────────────
@@ -993,21 +977,6 @@
     return ((hour >= 8 && hour <= 10) || (hour >= 12 && hour <= 14) || (hour >= 18 && hour <= 21)) ? 1 : 0;
   }
 
-  // ── Position dropdown using fixed coords from input's bounding rect ────────
-  function positionDropdown(inputEl, dropEl) {
-    const rect = inputEl.getBoundingClientRect();
-    dropEl.style.top    = (rect.bottom + 4) + 'px';
-    dropEl.style.left   = rect.left + 'px';
-    dropEl.style.width  = rect.width + 'px';
-    // Flip upward if not enough space below
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const dropH      = Math.min(220, spaceBelow < 150 ? 150 : 220);
-    dropEl.style.maxHeight = dropH + 'px';
-    if (spaceBelow < 120) {
-      dropEl.style.top    = (rect.top - dropH - 4) + 'px';
-    }
-  }
-
   // ══════════════════════════════════════════════════════════════════
   // OPENSTREETMAP RESTAURANT SEARCH — Nominatim + Overpass API
   // ══════════════════════════════════════════════════════════════════
@@ -1046,11 +1015,9 @@
   // ── 1. ADDRESS SEARCH (Nominatim) ────────────────────────────────
   function onAddressInput(val) {
     clearTimeout(addressDebounce);
-    const drop  = document.getElementById('addressDrop');
-    const input = document.getElementById('addressInput');
+    const drop = document.getElementById('addressDrop');
     if (val.length < 2) { drop.classList.remove('open'); return; }
     drop.innerHTML = '<div class="drop-loading">🔍 Searching…</div>';
-    positionDropdown(input, drop);
     drop.classList.add('open');
     addressDebounce = setTimeout(() => searchAddress(val), 400);
   }
@@ -1110,12 +1077,8 @@
 
   function onAddressFocus() {
     clearTimeout(addressBlurTimer);
-    const input = document.getElementById('addressInput');
-    const drop  = document.getElementById('addressDrop');
-    if (input.value.length >= 2) {
-      positionDropdown(input, drop);
-      drop.classList.add('open');
-    }
+    const val = document.getElementById('addressInput').value;
+    if (val.length >= 2) document.getElementById('addressDrop').classList.add('open');
   }
   function onAddressBlur() {
     addressBlurTimer = setTimeout(() => document.getElementById('addressDrop').classList.remove('open'), 200);
@@ -1157,8 +1120,6 @@
 
   async function fetchNearbyRestaurants(lat, lon, query) {
     const drop = document.getElementById('restaurantDrop');
-    const restInput = document.getElementById('restaurantInput');
-    positionDropdown(restInput, drop);
     drop.innerHTML = '<div class="drop-loading">🔍 Finding restaurants nearby…</div>';
     drop.classList.add('open');
 
@@ -1250,9 +1211,7 @@
   }
 
   function renderRestaurantDrop(query) {
-    const drop      = document.getElementById('restaurantDrop');
-    const restInput = document.getElementById('restaurantInput');
-    positionDropdown(restInput, drop);
+    const drop = document.getElementById('restaurantDrop');
     let list = allNearbyRestaurants;
     if (query && query.length > 0) {
       const q = query.toLowerCase();
@@ -1289,13 +1248,10 @@
   function onRestaurantFocus() {
     clearTimeout(restaurantBlurTimer);
     if (!selectedLocation) return;
-    const input = document.getElementById('restaurantInput');
-    const drop  = document.getElementById('restaurantDrop');
-    positionDropdown(input, drop);
     if (!allNearbyRestaurants.length) {
       fetchNearbyRestaurants(selectedLocation.lat, selectedLocation.lon, '');
     } else {
-      renderRestaurantDrop(input.value);
+      renderRestaurantDrop(document.getElementById('restaurantInput').value);
     }
   }
   function onRestaurantBlur() {
